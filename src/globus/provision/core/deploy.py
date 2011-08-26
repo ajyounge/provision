@@ -4,7 +4,7 @@ Created on Jun 17, 2011
 @author: borja
 '''
 from globus.provision.common.threads import GPThread
-from globus.provision.common.ssh import SSH
+from globus.provision.common.ssh import SSH, SSHCommandFailureException
 from globus.provision.common import log
 import sys
 from globus.provision.core.topology import Node
@@ -113,6 +113,15 @@ class ConfigureThread(GPThread):
                 ssh.scp(src, dst)
             
             self.check_continue()
+
+            #temporarily add admin group
+            log.debug("Create new admin group")
+            try:
+                ssh.run("addgroup admin")
+            except SSHCommandFailureException:
+                log.debug("Admin group already exists, skipping..")
+                
+
 
             # Run chef
             log.debug("Running chef", node)
