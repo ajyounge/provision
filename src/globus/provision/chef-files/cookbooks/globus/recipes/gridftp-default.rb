@@ -14,43 +14,29 @@
 # limitations under the License.                                             #
 # -------------------------------------------------------------------------- #
 
-
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ##
-## RECIPE: Globus Provision common actions
+## RECIPE: Globus Toolkit 5.1.1 GridFTP
 ##
-## This recipe performs actions that are common to all Globus Provision nodes.
+## This recipe installs the GridFTP server and sets it up as a xinetd service.
 ##
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 gp_domain = node[:topology][:domains][node[:domain_id]]
 gp_node   = gp_domain[:nodes][node[:node_id]]
 
-# Copy the hosts file
-cookbook_file "/etc/hosts" do
-  source "hosts"
+include_recipe "globus::gridftp-common"
+
+template "/etc/xinetd.d/gsiftp" do
+  source "xinetd.gridftp.erb"
   mode 0644
   owner "root"
   group "root"
+  variables(
+    :public_ip => gp_node[:public_ip]
+    :gc        => false
+  )
+  notifies :restart, "service[xinetd]"
 end
 
-# Create a BASH profile file with Globus Provision variables
-file "/etc/profile.d/globusprovision" do
-  mode 0644
-  owner "root"
-  group "root"
-  content "export MYPROXY_SERVER=#{gp_domain[:myproxy_server]}"
-end
-
-# Add passwordless access to members of the gp-admins group
-execute "add_sudoers" do
-  line = "%gp-admins ALL=NOPASSWD: ALL"
-  only_if do
-    File.read("/etc/sudoers").index(line).nil?
-  end  
-  user "root"
-  group "root"
-  command "echo \"#{line}\" >> /etc/sudoers"
-  action :run
-end
-
+service "xinetd"
