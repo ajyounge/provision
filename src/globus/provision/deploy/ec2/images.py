@@ -1,14 +1,35 @@
-'''
-Created on Dec 6, 2010
+# -------------------------------------------------------------------------- #
+# Copyright 2010-2011, University of Chicago                                 #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+# -------------------------------------------------------------------------- #
 
-@author: borja
-'''
+"""
+EC2 images utilities.
+
+Contains code to manage Globus Provision AMIs.
+"""
+
 from globus.provision.common.utils import create_ec2_connection
 from globus.provision.common.ssh import SSH
 from globus.provision.common import log
 import time
 
 class EC2AMICreator(object):
+    """
+    Used to create a Globus Provision AMI.
+    """ 
+    
     def __init__(self, chef_dir, base_ami, ami_name, config):
         self.chef_dir = chef_dir
         self.base_ami = base_ami
@@ -101,6 +122,10 @@ class EC2AMICreator(object):
         
 
 class EC2AMIUpdater(object):
+    """
+    Used to update a Globus Provision AMI.
+    """ 
+        
     def __init__(self, base_ami, ami_name, files, config):
         self.base_ami = base_ami
         self.ami_name = ami_name

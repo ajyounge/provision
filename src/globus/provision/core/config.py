@@ -1,3 +1,32 @@
+# -------------------------------------------------------------------------- #
+# Copyright 2010-2011, University of Chicago                                 #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+# -------------------------------------------------------------------------- #
+
+"""
+Contains the parsers for the two configuration files used in Globus Provision:
+
+* The instance configuration file (GPConfig): This is the configuration file
+  that specifies options related to an instance's deploymenr.
+  
+* The simple topology file: This is a simple format for specifying topologies
+  (which internally translated to the topology JSON format). It has the
+  format of a configuration file although, strictly speaking, it is *not*
+  a configuration file.    
+
+"""
+
 from globus.provision.core.topology import Domain, User, Node, Topology,\
     DeployData, EC2DeployData, GridMapEntry, GOEndpoint
 from globus.provision.common.config import Config, Section, Option, OPTTYPE_INT, OPTTYPE_FLOAT, OPTTYPE_STRING, OPTTYPE_BOOLEAN, OPTTYPE_FILE
@@ -5,6 +34,9 @@ import os.path
 import getpass
 
 class GPConfig(Config):
+    """
+    The instance configuration file.
+    """
 
     sections = []    
     
@@ -116,17 +148,6 @@ class GPConfig(Config):
             using the keypair specified in ``keypair``. If you are using one of the
             Globus Provision AMIs, you need to set this value to ``ubuntu``.
             """),     
-     Option(name        = "availability-zone",
-            getter      = "ec2-availability-zone",
-            type        = OPTTYPE_STRING,
-            required    = False,
-            default     = None,
-            doc         = """
-            The `availability zone <http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/concepts-regions-availability-zones.html>`_ 
-            you want the VMs to be deployed in. 
-            Unless you have a good reason for choosing a specific availability zone,
-            you should let Globus Provision choose a default zone for you.
-            """),
      Option(name        = "server-hostname",
             getter      = "ec2-server-hostname",
             type        = OPTTYPE_STRING,
@@ -173,20 +194,34 @@ class GPConfig(Config):
                   """)
     go.options = \
     [       
+     Option(name        = "ssh-key",
+            getter      = "go-ssh-key",
+            type        = OPTTYPE_FILE,
+            default     = "~/.ssh/id_rsa",            
+            required    = False,
+            doc         = """
+            SSH key to use when connecting to the Globus Online CLI. The public key
+            for this SSH key must have been previously added to your Globus Online
+            profile.
+            """),          
      Option(name        = "cert-file",
             getter      = "go-cert-file",
             type        = OPTTYPE_FILE,
-            required    = True,
+            required    = False,
             doc         = """
-            Location of the user certificate (PEM-encoded) that Globus Provision should
-            use to contact Globus Online's Transfer API. If a topology contains GO
-            endpoints, this certificate must be authorized to access all the accounts
-            in those endpoints.
+            When this option is specified, Globus Provision will access your GO
+            account using Globus Online's Transfer API (instead of sending commands
+            to Globus Online's CLI via SSH). To do so, Globus Provision needs the
+            location of a user certificate (PEM-encoded) that is authorized to access 
+            the accounts specified in your topology's endpoints.
+            
+            See :ref:`chap_go` for more details on the differences between using the
+            Transfer API, instead of the CLI via SSH.
             """),         
      Option(name        = "key-file",
             getter      = "go-key-file",
             type        = OPTTYPE_FILE,
-            required    = True,
+            required    = False,
             doc         = """
             Location of the private key (PEM-encoded) for the certificate
             specified in ``cert-file``.
@@ -194,27 +229,14 @@ class GPConfig(Config):
      Option(name        = "server-ca-file",
             getter      = "go-server-ca-file",
             type        = OPTTYPE_STRING,
-            required    = True,
+            required    = False,
             doc         = """
             To verify the server certificate of the Globus Online Transfer API server,
             Globus Provision needs the certificate of the CA that signed that certificate.
-            This file is available for download at https://transfer.api.globusonline.org/gd-bundle_ca.cert
-            """),           
-     Option(name        = "auth",
-            getter      = "go-auth",
-            type        = OPTTYPE_STRING,
-            required    = True,
-            valid       = ["myproxy", "go"],
-            doc         = """
-            The authentication method that Globus Online will use when contacting the endpoint on
-            behalf of a user. The valid options are:
-            
-            * ``myproxy``: Contact the MyProxy server specified in the topology.
-            * ``go``: Use Globus Online accounts. Note that this requires setting up a domain's
-              gridmap file in a specific way. 
-              
-            See :ref:`Globus Online Authentication Methods <sec_go_auth>` for more details on
-            the implications of each authentication method.
+            This file is already bundled with Globus Provision. The only reason for using
+            this option to specify a different CA certificate is in the unlikely case that
+            the API server decides to switch to a different CA (and the file bundled
+            with Globus Provision has not been updated to that CA yet).
             """)
     ]         
     sections.append(go)
@@ -224,6 +246,9 @@ class GPConfig(Config):
 
 
 class SimpleTopologyConfig(Config):
+    """
+    The simple topology file
+    """    
     
     sections = []    
     
@@ -409,7 +434,15 @@ class SimpleTopologyConfig(Config):
             required    = False,
             doc         = """
             The number of worker nodes to create for the LRM.        
-            """),          
+            """),         
+     Option(name        = "galaxy",
+            getter      = "galaxy",
+            type        = OPTTYPE_BOOLEAN,
+            required    = False,
+            default     = False,
+            doc         = """
+            Specifies whether to set up a Galaxy server on this domain.        
+            """),            
      Option(name        = "go-endpoint",
             getter      = "go-endpoint",
             type        = OPTTYPE_STRING,
@@ -430,14 +463,16 @@ class SimpleTopologyConfig(Config):
             required    = False,
             valid       = ["myproxy", "go"],            
             doc         = """
-            This is similar to the :ref:`go-auth option<GPConfig_go-auth>` of the configuration file.
-            When ``myproxy`` is selected, the endpoint will be configured to authenticate users
-            with this domain's MyProxy server (note that the :ref:`myproxy option<SimpleTopologyConfig_myproxy>`
-            must be set to ``true`` for this to work). If the ``go`` option is selected, Globus
-            Online will use its internal authentication (Globus Provision will set up the domain
-            so the GO identities will be authorized to access the endpoint).
+            The authentication method that Globus Online will use when contacting the endpoint on
+            behalf of a user. The valid options are:
             
-            See :ref:`chap_go` for more details.    
+            * ``myproxy``: Contact the MyProxy server specified in the topology. Note that 
+              the :ref:`myproxy option<SimpleTopologyConfig_myproxy>` must be set to ``true`` 
+              for this to work
+            * ``go``: Use Globus Online authentication.
+              
+            See :ref:`chap_go`, and specifically :ref:`Globus Online Authentication Methods <sec_go_auth>`,
+            for more details on the implications of each authentication method.            
             """)                            
     ]     
     sections.append(domain)
@@ -469,7 +504,18 @@ class SimpleTopologyConfig(Config):
             This is the `EC2 instance type <http://en.wikipedia.org/wiki/Amazon_Machine_Image>`_ that will
             be used to launch the machines in this domain. The default is to use micro-instances (t1.micro),
             which tend to be enough if you are just tinkering around.
-            """),              
+            """),         
+     Option(name        = "availability-zone",
+            getter      = "ec2-availability-zone",
+            type        = OPTTYPE_STRING,
+            required    = False,
+            default     = None,
+            doc         = """
+            The `availability zone <http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/concepts-regions-availability-zones.html>`_ 
+            you want the VMs to be deployed in. 
+            Unless you have a good reason for choosing a specific availability zone,
+            you should let Globus Provision choose a default zone for you.
+            """)          
     ]    
     sections.append(ec2)    
   
@@ -585,6 +631,11 @@ class SimpleTopologyConfig(Config):
                     # If there is no login node, the NFS/NIS server will
                     # effectively act as one. 
                     server_node.add_to_array("run_list", "role[globus]")
+                if self.get((domain_name,"galaxy")):
+                    # If there is a Galaxy server in the domain, the "common"
+                    # recipe has to be installed on the NFS/NIS server
+                    server_node.add_to_array("run_list", "recipe[galaxy::galaxy-globus-common]")
+                    
                 domain.add_node(server_node)
 
             if self.get((domain_name,"login")):            
@@ -621,6 +672,23 @@ class SimpleTopologyConfig(Config):
                     gridftp_node.add_to_array("run_list", "recipe[globus::go_cert]")
                 gridftp_node.add_to_array("run_list", "role[domain-gridftp]")
                 domain.add_node(gridftp_node)                
+            
+            if self.get((domain_name,"galaxy")):
+                galaxy_node = Node()
+                galaxy_node.set_property("id", "%s-galaxy" % domain_name)
+
+                if self.get((domain_name,"nfs-nis")):  
+                    galaxy_node.set_property("depends", "node:%s" % server_name)
+                    galaxy_node.add_to_array("run_list", "role[domain-nfsnis-client]")
+                else:
+                    galaxy_node.add_to_array("run_list", "recipe[provision::domain_users]")     
+                    galaxy_node.add_to_array("run_list", "recipe[galaxy::galaxy-globus-common]")     
+
+                if self.get((domain_name,"go-endpoint")) != None:
+                    galaxy_node.add_to_array("run_list", "recipe[globus::go_cert]")
+                galaxy_node.add_to_array("run_list", "recipe[galaxy::galaxy-globus]")
+                domain.add_node(galaxy_node)                
+            
             
             lrm = self.get((domain_name,"lrm"))
             if lrm != "none":

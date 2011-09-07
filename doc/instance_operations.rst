@@ -9,6 +9,7 @@ and :ref:`gotten an Amazon AWS account <chap_ec2>`. If you didn't work through t
 through a simple example. If you've already read the Quickstart Guide, this chapter will
 show you a more complex example, so it should still be worthwhile to read the whole thing. 
 
+.. _sec_simple_topology:
 
 Defining a topology
 ===================
@@ -86,34 +87,7 @@ will be deployed as EC2 instances (virtual machines running on an Amazon datacen
 also select the ``dummy`` deployer, which will just pretend to deploy your topology (this can
 be useful for testing purposes).
 
-Because we've selected the ``ec2`` deployer, there is also an ``[ec2]`` section where we have
-to specify some EC2-specific options:
-
-.. parsed-literal::
-
-	[ec2]
-	ami: |ami|
-	instance-type: t1.micro
-
-Here, we are specifying what AMI (Amazon Machine Image) we will use to deploy the hosts
-in our topology. The |ami| ami is an Ubuntu 11.04 image with some software preinstalled,
-which will reduce the deployment time considerably.
-
-.. note::
-	In case you're wondering, the documentation is automatically updated to reflect
-	the latest version of the Globus Provision "golden AMI", so you can use the 
-	configuration files shown here verbatim. 
-	
-	The latest version of the AMI is also listed on the main Globus Provision website.
-	
-We are also specifying the `EC2 instance type <http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/instance-types.html>`_
-to use. We are using the `"micro-instance" <http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/index.html?concepts_micro_instances.html>`_
-type, an instance with limited memory and CPU power, but good enough for tinkering around. This is also
-Amazon's cheapest instance type ($0.02/hour), which means running the example in this chapter
-won't cost you more that $0.08/hour (as we'll see soon, the topology is "translated" into four
-hosts).
-
-Finally, we have the specification of the ``simple`` domain itself. The options are fairly
+Next, we have the specification of the ``simple`` domain itself. The options are fairly
 self-explanatory:
 
 ::
@@ -144,21 +118,44 @@ in all the hosts in the domain).
 ::
 
 	lrm: condor
-	
-This option specifies what LRM (Local Resource Manager) should be installed on this domain.
-Currently, only ``condor`` is supported.	
-
-::
-	
 	cluster-nodes: 2
 	
-Finally, we specify that the LRM must have two worker nodes.
+This option specifies what LRM (Local Resource Manager) should be installed on this domain, and
+how many worker nodes that LRM will have.	
+
+Finally, because we've selected the ``ec2`` deployer, there is also an ``[ec2]`` section where we have
+to specify some EC2-specific options:
+
+.. parsed-literal::
+
+	[ec2]
+	ami: |ami|
+	instance-type: t1.micro
+
+Here, we are specifying what AMI (Amazon Machine Image) we will use to deploy the hosts
+in our topology. The |ami| ami is an Ubuntu 11.04 image with some software preinstalled,
+which will reduce the deployment time considerably.
+
+.. note::
+	In case you're wondering, the documentation is automatically updated to reflect
+	the latest version of the Globus Provision "golden AMI", so you can use the 
+	configuration files shown here verbatim. 
+	
+	The latest version of the AMI is also listed on the main Globus Provision website.
+	
+We are also specifying the `EC2 instance type <http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/instance-types.html>`_
+to use. We are using the `"micro-instance" <http://docs.amazonwebservices.com/AWSEC2/latest/UserGuide/index.html?concepts_micro_instances.html>`_
+type, an instance with limited memory and CPU power, but good enough for tinkering around. This is also
+Amazon's cheapest instance type ($0.02/hour), which means running the example in this chapter
+won't cost you more than $0.08/hour (as we'll see soon, the topology is "translated" into four
+hosts).
 
 .. note::
 
 	The above is just a sampling of the options available in the simple topology format.
 	Make sure to check out the :ref:`chap_stopology_ref` for a complete list of options.
 
+.. _sec_create_instance:
 
 Creating an instance
 ====================
@@ -326,9 +323,7 @@ for the hostname of ``simple-condor``)::
 
 	ssh user1@ec2-M-M-M-M.compute-1.amazonaws.com condor_status	
 	
-You should see the following:
-	
-::
+You should see the following::
 
 	Name               OpSys      Arch   State     Activity LoadAv Mem   ActvtyTime
 	
@@ -351,7 +346,7 @@ the ``-v`` option:
 	gp-describe-instance -v gpi-02156188
 	
 As you'll see, this provides a much more verbose output than the regular ``gp-describe-instance``.
-The :ref:`chap_topology` chapter describes this JSON format in more detail. 
+:ref:`chap_topology` describes this JSON format in more detail. 
 
 Modifying a running instance
 ============================
@@ -386,8 +381,8 @@ account if you ever want to stop and later resume this instance; that way, Globu
 know not to start ``simple-condor-wn3`` until ``simple-condor`` is running).
 
 We also need to tell Globus Provision that this new host will act as a Condor worker node in the domain.
-We do so by specifying what its "run list" will be. This concept is covered in much more detail in
-the :ref:`chap_topology` chapter. The run list is actually passed to `Chef <http://www.opscode.com/chef/>`_,
+We do so by specifying what its "run list" will be. This concept is covered in more detail in
+:ref:`chap_topology`. The run list is actually passed to `Chef <http://www.opscode.com/chef/>`_,
 a configuration management framework that Globus Provision uses internally to set up the individual
 hosts in an instance. You can see the list of Chef "recipes" and "roles" that Globus Provision
 supports in :ref:`chap_recipe_ref`.
@@ -463,37 +458,45 @@ You should now be able to log into any of the instance's hosts as the ``newuser`
 Removing hosts and users
 ------------------------
 
-::
+Similarly, you can remove hosts and users using the :ref:`cli_gp-remove-hosts` and :ref:`cli_gp-remove-users`,
+respectively. Besides providing the Globus Provision instance identifier, and the domain where
+you want to remove hosts or users, you also need to provide a list of hosts/users.
 
-	gp-remove-hosts --domain simple
-	                gpi-02156188 
-	                simple-condor-wn3 simple-foo simple-bar 
+For example, to remove ``simple-condor-wn3``, we could do the following::
+
+	gp-remove-hosts --domain simple \
+	                gpi-02156188 \
+	                simple-condor-wn3 simple-foo simple-bar
 	
-::
+Notice how we've also specified two hosts that don't exist. In this case, ``gp-remove-hosts``
+will just print out a warning::
 
 	Warning: Host simple-foo does not exist.
 	Warning: Host simple-bar does not exist.
 	Removing hosts ['simple-condor-wn3'] from gpi-02156188...done!
-	Removed hosts in 0 minutes and 0 seconds
+	Removed hosts in 0 minutes and 29 seconds
 
+Be careful when using this command: the host will be irreversibly terminated.
 
-::
+``gp-remove-users`` works in a similar fashion::
 
-	gp-remove-users --domain simple
-	                gpi-02156188 
+	gp-remove-users --domain simple \
+	                gpi-02156188 \
 	                newuser user3 user4 
-	
-	
-::
+
+This should output the following::
 
 	Warning: User user4 does not exist.
 	Warning: User user3 does not exist.
 	Removing users ['newuser'] from gpi-02156188... done!
-	Removed users in 0 minutes and 0 seconds
+	Removed users in 0 minutes and 12 seconds
 	
 .. note::
 
-	Only prevents the user from being created again.
+   ``gp-remove-users`` currently doesn't remove the user account on the hosts themselves,
+   it just removes them from the topology. This means that, if you manually remove the
+   user, that user will not be automatically re-created in subsequent updates to the instance.
+   In the future, ``gp-remove-users`` will also take care of removing the actual user account.
 
 Updating the topology
 ---------------------
@@ -514,7 +517,7 @@ would be able to do the following changes:
   a ``t1.micro`` EC2 instance, you could add a few ``m1.small`` EC2 instances). 
 * Add or remove several users at once (instead of one by one using ``gp-add-user``).
   Furthermore, you can also modify existing users (for example, changing a user's
-  password or authorized SSH public key)
+  password or authorized SSH public key).
 * Add or remove entire domains.
 * Add software to one or several hosts.
 
@@ -566,23 +569,17 @@ host::
 	ssh user1@ec2-M-M-M-M.compute-1.amazonaws.com
 
 By default, Globus Provision will create user certificates for all users, which means you 
-should be able to create a proxy certificate by running the following:
-
-::
+should be able to create a proxy certificate by running the following::
 
 	grid-proxy-init
 	
-You should see the following output:	
-	
-::
+You should see the following output::
 	
 	Your identity: /O=Grid/OU=Globus Provision (generated)/CN=user1
 	Creating proxy ................................ Done
 	Your proxy is valid until: Wed Aug 17 11:24:55 2011
 	
-Next, you can try doing a simple GridFTP transfer:	
-	
-::
+Next, you can try doing a simple GridFTP transfer::
 
 	globus-url-copy gsiftp://`hostname --fqdn`/etc/hostname ./
 	
@@ -590,37 +587,54 @@ Next, you can try doing a simple GridFTP transfer:
 Stopping and resuming an instance
 =================================
 
-::
+Once a Globus Provision instance is running, you may not need it to be running
+continuously. For example, let's say you've deployed an instance like the one
+described in this chapter, just for the purposes of experimenting with Condor,
+and figuring out how you could run some existing scientific code in parallel.
+You probably only want the instance to be running while you're tinkering with
+it, but not at other times. Although you *could* leave the instance running
+all the time, you would be paying Amazon EC2 for a set of machines that
+are essentially idling most of the time.
+
+On the other hand, it would be inconvenient to have to
+create a completely new instance from scratch, transfer all your files into it,
+etc., every time you wanted to tinker around. So, Globus Provision allows you
+to shut down -but not *terminate*- your instance, so that you can resume it
+later. You will still have to pay Amazon EC2 for the cost of storing your
+instance (more specifically, each Globus Provision AMI uses an 8GB 
+`EBS <http://aws.amazon.com/ebs/>`_-backed partition), but this cost
+is much lower than the cost of running the EC2 instances.
+
+To stop your Globus Provision instance, simply use the :ref:`cli_gp-stop`
+command::
 
 	gp-stop gpi-02156188
 	
-
-::
+You should see the following::
 
 	Stopping instance gpi-02156188... done!
 	
-::
+And ``gp-describe-instance`` should show the following::
 
 	gpi-02156188: Stopped
 	
 	Domain 'simple'
 	    simple-server      Stopped  ec2-N-N-N-N.compute-1.amazonaws.com  10.N.N.N
 	    simple-condor      Stopped  ec2-M-M-M-M.compute-1.amazonaws.com  10.M.M.M 
-	    simple-condor-wn3  Stopped  ec2-T-T-T-T.compute-1.amazonaws.com  10.T.T.T  
 	    simple-condor-wn2  Stopped  ec2-R-R-R-R.compute-1.amazonaws.com  10.R.R.R  
 	    simple-condor-wn1  Stopped  ec2-S-S-S-S.compute-1.amazonaws.com  10.S.S.S 
 
-	
-::
+To resume your instance, just use the ``gp-start`` command. It will realize that
+your instance is stopped, and not completely new, and will resume it (instead of
+requesting new EC2 instances for it)::
 
 	gp-start gpi-02156188
 	
-
-::
+You should see the following::
 
 	Starting instance gpi-02156188... done!	
-	Started instance in 0 minutes and 0 seconds
 
+And ``gp-describe-instance`` should report it as running again:
 ::
 
 	gpi-02156188: Running
@@ -628,9 +642,34 @@ Stopping and resuming an instance
 	Domain 'simple'
 	    simple-server      Running  ec2-A-A-A-A.compute-1.amazonaws.com  10.A.A.A
 	    simple-condor      Running  ec2-B-B-B-B.compute-1.amazonaws.com  10.B.B.B 
-	    simple-condor-wn3  Running  ec2-C-C-C-C.compute-1.amazonaws.com  10.C.C.C  
-	    simple-condor-wn2  Running  ec2-D-D-D-D.compute-1.amazonaws.com  10.D.D.D  
-	    simple-condor-wn1  Running  ec2-E-E-E-E.compute-1.amazonaws.com  10.E.E.E 	
+	    simple-condor-wn2  Running  ec2-C-C-C-C.compute-1.amazonaws.com  10.C.C.C  
+	    simple-condor-wn1  Running  ec2-D-D-D-D.compute-1.amazonaws.com  10.D.D.D 	
+
+When resuming an instance, Globus Provision does not just start the machines again.
+Since Amazon EC2 will assign new hostnames and IPs to machines that have been stopped
+and then started again, Globus Provision will also reconfigure the machines so that
+services like NFS/NIS and Condor work correctly (if you simply start the machine,
+it will start with configuration files that still point to the old hostnames).
+
+So, if you run the following::
+
+	ssh ec2-B-B-B-B.compute-1.amazonaws.com condor_status	
+	
+You should see that Condor is aware of its two worker nodes with their new hostnames::
+
+	Name               OpSys      Arch   State     Activity LoadAv Mem   ActvtyTime
+	
+	ec2-C-C-C-C.comput LINUX      INTEL  Unclaimed Idle     0.010   595  0+00:04:43
+	ec2-D-D-D-D.comput LINUX      INTEL  Unclaimed Idle     0.010   595  0+00:04:44
+	                     Total Owner Claimed Unclaimed Matched Preempting Backfill
+	
+	         INTEL/LINUX     2     0       0         2       0          0        0
+	
+	               Total     2     0       0         2       0          0        0
+
+Actually, the fact that you were able to log into the Condor head node (which is
+an NFS/NIS *client* in the domain) also confirms that the NFS/NIS configuration
+files were updated correctly.
 
 Terminating an instance
 =======================

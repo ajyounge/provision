@@ -1,3 +1,25 @@
+# -------------------------------------------------------------------------- #
+# Copyright 2010-2011, University of Chicago                                 #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+# -------------------------------------------------------------------------- #
+
+"""
+The EC2 deployer
+
+This deployer will create and manage hosts for a topology using Amazon EC2.
+"""
+
 from cPickle import load
 from boto.exception import BotoClientError, EC2ResponseError
 from globus.provision.common.utils import create_ec2_connection 
@@ -14,6 +36,13 @@ from globus.provision.core.deploy import BaseDeployer, VM, ConfigureThread, Wait
 from globus.provision.core.topology import DeployData, EC2DeployData, Node
 
 class EC2VM(VM):
+    """
+    Represents a VM running on EC2.
+    
+    See the documentation on globus.provision.core.deploy.VM for details
+    on what the VM class is used for.
+    """
+        
     def __init__(self, ec2_instance):
         self.ec2_instance = ec2_instance
         
@@ -21,6 +50,9 @@ class EC2VM(VM):
         return self.ec2_instance.id
 
 class Deployer(BaseDeployer):
+    """
+    The EC2 deployer.
+    """
   
     def __init__(self, *args, **kwargs):
         BaseDeployer.__init__(self, *args, **kwargs)
@@ -36,25 +68,23 @@ class Deployer(BaseDeployer):
     
     def __connect(self):
         config = self.instance.config
-        keypair = config.get("ec2-keypair")
-        zone = config.get("ec2-availability-zone")
         
         try:
             log.debug("Connecting to EC2...")
             ec2_server_hostname = config.get("ec2-server-hostname")
-            ec2_server_port = int(config.get("ec2-server-port"))
+            ec2_server_port = config.get("ec2-server-port")
             ec2_server_path = config.get("ec2-server-path")
             
             if ec2_server_hostname != None:
                 self.conn = create_ec2_connection(ec2_server_hostname,
-                                                  ec2_server_path,
-                                                  ec2_server_port) 
+                                                  ec2_server_port,
+                                                  ec2_server_path) 
             else:
                 self.conn = create_ec2_connection()
             
             if self.conn == None:
-                print "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables are not set."
-                exit(1)
+                raise DeploymentException, "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables are not set."
+
             log.debug("Connected to EC2.")
         except BotoClientError, exc:
             raise DeploymentException, "Could not connect to EC2. %s" % exc.reason
@@ -63,23 +93,33 @@ class Deployer(BaseDeployer):
         sgs = topology.get_deploy_data(node, "ec2", "security_groups")
         if sgs is None:
             sgs = []
+        
+        if len(sgs) == 0:
+            if self.has_gp_sg:
+                sgs = ["globus-provision"]
+            else:
+                gp_sg = self.conn.get_all_security_groups(filters={"group-name":"globus-provision"})
+                if len(gp_sg) == 0:
+                    gp_sg = self.conn.create_security_group('globus-provision', 'Security group for Globus Provision instances')
+                    
+                    # Internal
+                    gp_sg.authorize(src_group = gp_sg)
 
-        if len(sgs) == 0 and not self.has_gp_sg:
-            gp_sg = self.conn.get_all_security_groups(groupnames = ["globus-provision"])
-            if len(gp_sg) == 0:
-                gp_sg = self.conn.create_security_group('globus-provision', 'Security group for Globus Provision instances')
-                
-                # SSH
-                gp_sg.authorize('tcp', 22, 22, '0.0.0.0/0')
-                
-                # GridFTP
-                gp_sg.authorize('tcp', 2811, 2811, '0.0.0.0/0')
-                gp_sg.authorize('udp', 2811, 2811, '0.0.0.0/0')
-                
-                # MyProxy
-                gp_sg.authorize('tcp', 7512, 7512, '0.0.0.0/0')
+                    # SSH
+                    gp_sg.authorize('tcp', 22, 22, '0.0.0.0/0')
+                    
+                    # GridFTP
+                    gp_sg.authorize('tcp', 2811, 2811, '0.0.0.0/0')
+                    gp_sg.authorize('udp', 2811, 2811, '0.0.0.0/0')
+                    gp_sg.authorize('tcp', 50000, 51000, '0.0.0.0/0')
+                    
+                    # MyProxy
+                    gp_sg.authorize('tcp', 7512, 7512, '0.0.0.0/0')
     
-                sgs = ['globus-provision'] 
+                    # Galaxy
+                    gp_sg.authorize('tcp', 8080, 8080, '0.0.0.0/0')
+        
+                sgs = ["globus-provision"]
                 self.has_gp_sg = True
         else:
             all_sgs = self.conn.get_all_security_groups()
@@ -94,11 +134,22 @@ class Deployer(BaseDeployer):
         ami = topology.get_deploy_data(node, "ec2", "ami")
         security_groups = self.__get_security_groups(topology, node)
 
-        image = self.conn.get_image(ami)
+        try:
+            image = self.conn.get_image(ami)
+        except EC2ResponseError, ec2err:
+            if ec2err.error_code in ("InvalidAMIID.NotFound", "InvalidAMIID.Malformed"):
+                raise DeploymentException, "AMI %s does not exist" % ami
+            else:
+                raise ec2err
+
         if image == None:
             # Workaround for this bug:
             # https://bugs.launchpad.net/eucalyptus/+bug/495670
-            image = [i for i in self.conn.get_all_images() if i.id == ami][0]
+            image = [i for i in self.conn.get_all_images() if i.id == ami]
+            if len(image) == 0:
+                raise DeploymentException, "AMI %s does not exist" % ami
+            else:
+                image = image[0]
         
         log.info(" |- Launching a %s instance for %s." % (instance_type, node.id))
         reservation = image.run(min_count=1, 
@@ -184,6 +235,12 @@ class Deployer(BaseDeployer):
             if newstate == state:
                 return True
         # TODO: Check errors            
+        
+    def get_wait_thread_class(self):
+        return self.NodeWaitThread
+
+    def get_configure_thread_class(self):
+        return self.NodeConfigureThread
             
     class NodeWaitThread(WaitThread):
         def __init__(self, multi, name, node, vm, deployer, state, depends = None):
@@ -215,44 +272,6 @@ class Deployer(BaseDeployer):
             instance = self.ec2_instance
             
             log.info("Setting up instance %s. Hostname: %s" % (instance.id, instance.public_dns_name), node)
-           
-            try:
-                ssh.run("ls -l /chef")
-            except SSHCommandFailureException:
-                #The image is not properly setup, so do all pre-configuration for globus-provision
-                log.info("Image is not configured with Chef, so installing...")
-
-                ssh.run("sudo chown -R %s /chef" % self.config.get("ec2-username"))
-                ssh.scp_dir("%s" % self.chef_dir, "/chef")
-
-
-
-                ssh.run("addgroup admin", exception_on_error = False)
-                ssh.run("echo \"%s `hostname`\" | sudo tee -a /etc/hosts" % instance.private_ip_address)
-
-                ssh.run("sudo apt-get install lsb-release wget")
-                ssh.run("echo \"deb http://apt.opscode.com/ `lsb_release -cs` main\" | sudo tee /etc/apt/sources.list.d/opscode.list")
-                ssh.run("wget -qO - http://apt.opscode.com/packages@opscode.com.gpg.key | sudo apt-key add -")
-                ssh.run("sudo apt-get update")
-                ssh.run("echo 'chef chef/chef_server_url string http://127.0.0.1:4000' | sudo debconf-set-selections")
-                ssh.run("sudo apt-get -q=2 install chef")
-        
-                ssh.run("echo -e \"cookbook_path \\\"/chef/cookbooks\\\"\\nrole_path \\\"/chef/roles\\\"\" > /tmp/chef.conf")        
-                ssh.run("echo '{ \"run_list\": \"recipe[provision::ec2]\", \"scratch_dir\": \"%s\" }' > /tmp/chef.json" % self.scratch_dir)
-
-                ssh.run("sudo chef-solo -c /tmp/chef.conf -j /tmp/chef.json")    
-        
-                ssh.run("sudo update-rc.d -f nis remove")
-                ssh.run("sudo update-rc.d -f condor remove")
-                ssh.run("sudo update-rc.d -f chef-client remove")
-       
-
-                log.debug("Removing private data...")
-         
-                ssh.run("sudo find /root/.*history /home/*/.*history -exec rm -f {} \;", exception_on_error = False)
-
-
-            
                 
         def post_configure(self, ssh):
             pass

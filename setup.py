@@ -1,7 +1,26 @@
+# -------------------------------------------------------------------------- #
+# Copyright 2010-2011, University of Chicago                                 #
+#                                                                            #
+# Licensed under the Apache License, Version 2.0 (the "License"); you may    #
+# not use this file except in compliance with the License. You may obtain    #
+# a copy of the License at                                                   #
+#                                                                            #
+# http://www.apache.org/licenses/LICENSE-2.0                                 #
+#                                                                            #
+# Unless required by applicable law or agreed to in writing, software        #
+# distributed under the License is distributed on an "AS IS" BASIS,          #
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.   #
+# See the License for the specific language governing permissions and        #
+# limitations under the License.                                             #
+# -------------------------------------------------------------------------- #
+
 from distribute_setup import use_setuptools
 use_setuptools(version="0.6.15")
 from setuptools import setup, find_packages
+import sys
 
+sys.path.insert(0, './src')
+from globus.provision import RELEASE
 
 cmds = {"globus.provision.cli.api":
         ["gp-create", "gp-describe-instance", "gp-start", "gp-update-topology", "gp-stop",
@@ -12,7 +31,7 @@ cmds = {"globus.provision.cli.api":
         ["gp-ec2-create-ami", "gp-ec2-update-ami"],
         
         "globus.provision.cli.globusonline":
-        ["gp-go-register-endpoint"]
+        ["gp-go-register-endpoints"]
         }
 
 eps = []
@@ -23,15 +42,15 @@ for mod in cmds:
 
 
 setup(name='globus-provision',
-      version='0.3.0rc1',
-      description='A tool for deploying fully-configured Globus systems on an IaaS cloud, such as Amazon EC2',
+      version=RELEASE,
+      description='A tool for deploying fully-configured Globus systems on Amazon EC2',
       author='University of Chicago',
       author_email='borja@cs.uchicago.edu',
       url='http://globus.org/provision',
       package_dir = {'': 'src'},      
       packages=find_packages("src", exclude=["dg_paraproxy"]),
       
-      install_requires = ['boto<2.0', 'paramiko>=1.7.7.1', 'colorama>=0.2.4'],
+      install_requires = ['boto>=2.0', 'paramiko>=1.7.7.1', 'colorama>=0.2.4', 'pyOpenSSL>=0.10'],
       setup_requires = [ "setuptools_git >= 0.4.2", ],
       include_package_data=True,
       
@@ -39,7 +58,6 @@ setup(name='globus-provision',
         'console_scripts': eps
         },
 
-      package_data = {"chef":["*"]},
       zip_safe = False,
 
       license="Apache Software License",

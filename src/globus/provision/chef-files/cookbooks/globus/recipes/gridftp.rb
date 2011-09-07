@@ -16,13 +16,14 @@
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ##
-## RECIPE: Globus Toolkit 5.0.3 GridFTP
+## RECIPE: Globus Toolkit 5.1.1 GridFTP
 ##
-## This recipe performs a barebones install of GridFTP. It assumes that the
-## "globus" recipe has been run, so it just involves setting up GridFTP
-## as a xinetd service.
+## This recipe installs the GridFTP server and sets it up as a xinetd service.
 ##
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+gp_domain = node[:topology][:domains][node[:domain_id]]
+gp_node   = gp_domain[:nodes][node[:node_id]]
 
 include_recipe "globus::repository"
 
@@ -43,8 +44,7 @@ template "/etc/xinetd.d/gsiftp" do
   owner "root"
   group "root"
   variables(
-    :ec2_public => node[:ec2_public],
-    :public_ip => node[:public_ip]
+    :public_ip => gp_node[:public_ip]
   )
   notifies :restart, "service[xinetd]"
 end
